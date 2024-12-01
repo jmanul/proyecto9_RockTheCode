@@ -1,4 +1,7 @@
 const puppeteer = require('puppeteer');
+const fs = require('fs');
+
+const workOfArtsArray = [];
 
 const scrapper = async (url) => {
 
@@ -8,26 +11,37 @@ const scrapper = async (url) => {
      const page = await browser.newPage();
      await page.goto(url);
 
-    try {
+     try {
         
-         await page.waitForSelector('#wt-cli-accept-all-btn', { visible: true });
-         const cookieButton = await page.$('#wt-cli-accept-all-btn');
+          await page.waitForSelector('#wt-cli-accept-all-btn', { visible: true });
+          const cookieButton = await page.$('#wt-cli-accept-all-btn');
 
-         await cookieButton.click();
+          await cookieButton.click();
 
-         console.log('Cookies aceptados');
+          console.log('Cookies aceptados');
 
-    } catch (error) {
+     } catch (error) {
          
-         console.log('No hay Cookies');
+          console.log('No hay Cookies');     
+
+     };
+
+     createItem(page, workOfArtsArray, browser);
      
-    }
-     
-   
+}
+
+const createItem = async (page, array, browser) => {
+
+     await page.waitForSelector('.facetwp-pager', { visible: true });
+     await page.waitForSelector('.infinite-scroll-item', { visible: true });
+
      const arrayArt = await page.$$('.infinite-scroll-item');
 
 
+
      for (const workOfArt of arrayArt) {
+
+
           // Obtener todos los autores como un array
 
           let artists = [];
@@ -49,9 +63,8 @@ const scrapper = async (url) => {
           // Obtener la URL de la imagen
           let image = '';
           try {
-               await workOfArt.waitForSelector('img', { visible: true });
                image = await workOfArt.$eval('img', el => el.getAttribute('data-srcset'));
-               
+
           } catch (error) {
 
                console.log('No se pudo obtener la imagen');
@@ -60,28 +73,71 @@ const scrapper = async (url) => {
           // Obtener el precio de la obra
           let price = '';
           try {
-               price = await workOfArt.$eval('bdi', el => el.textContent.trim());
+               price = await workOfArt.$eval('bdi', el => el.textContent);
+
+               // Limpiar el valor del precio
+               price = parseFloat(
+                    price
+                         .replace(/\./g, '') // Eliminar puntos (separadores de miles)
+                         .replace(',', '.') // Reemplazar coma (separador decimal) por un punto
+                         .replace(/[^\d.-]/g, '')); // Eliminar símbolos no numéricos (como €)
           } catch (error) {
-               console.log('Consultar precio');
+
+               price = 'Consultar precio';
           }
 
-          // Mostrar resultados
-          console.log({
-               artists, // Array de artistas
+          let workOfArtItem = {
+
+               artists, // Array de obras de arte
                title,
                image,
                price,
-          });
+          };
+
+          array.push(workOfArtItem);
 
      }
 
-    
 
-     // Cierra el navegador
-     await browser.close();
+     try {
+
+          await page.waitForSelector('[aria-label="Go to next page"]', { visible: true });
+          const nextPageButton = await page.$('[aria-label="Go to next page"]');
+
+          await nextPageButton.click();
+
+          console.log('pasamos a la siguiente pagina');
+
+          createItem(page, workOfArtsArray, browser);
+
+     } catch (error) {
+
+          console.log('No hay mas paginas');
+          // Cierra el navegador
+          await browser.close();
+          dateWrite(workOfArtsArray);
+
+     }
+
+     console.log(array.length);
+
+
 };
 
+
+const dateWrite = (array) => {
+
+     fs.writeFile('workOfArts.json', JSON.stringify(array), () => {
+
+          console.log('archivo escrito');
+     })
+}
+
 scrapper('https://www.tallerdelprado.com/tienda/?v=04c19fa1e772');
+
+
+
+
 
 
 
