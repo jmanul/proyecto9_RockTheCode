@@ -13,7 +13,6 @@ const addWorksOfArts = async (req, res, next) => {
           
      }
 
-
 };
 
 module.exports = { addWorksOfArts };

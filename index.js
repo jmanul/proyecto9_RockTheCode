@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { scrapper } = require("./src/utils/scrapper");
+
 const express = require('express');
 const { dbConect } = require('./src/config/db');
 
@@ -18,7 +18,6 @@ app.listen(3000, () => {
 });
 
 
-// scrapper('https://www.tallerdelprado.com/tienda/?v=12470fe406d4');
 
 
 
