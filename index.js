@@ -1,139 +1,155 @@
+
 const puppeteer = require('puppeteer');
 const fs = require('fs');
 
 const workOfArtsArray = [];
+let numberPage = 1;
 
 const scrapper = async (url) => {
-
      console.log(url);
 
      const browser = await puppeteer.launch({ headless: false });
      const page = await browser.newPage();
      await page.goto(url);
+     await page.setViewport({ width: 1024, height: 600})
 
      try {
-        
           await page.waitForSelector('#wt-cli-accept-all-btn', { visible: true });
-          const cookieButton = await page.$('#wt-cli-accept-all-btn');
-
+          const cookieButton = await page.$(`#wt-cli-accept-all-btn`);
           await cookieButton.click();
-
-          console.log('Cookies aceptados');
+          console.log('Cookies aceptadas');
 
      } catch (error) {
-         
-          console.log('No hay Cookies');     
-
-     };
-
-     createItem(page, workOfArtsArray, browser);
+          console.log('no hay Cookies');
+     }
      
+     await createItems(page, workOfArtsArray, browser);
 }
 
-const createItem = async (page, array, browser) => {
+const createItems = async (page, array, browser) => {
 
-     await page.waitForSelector('.facetwp-pager', { visible: true });
-     await page.waitForSelector('.infinite-scroll-item', { visible: true });
+     await delay(5000);
 
-     const arrayArt = await page.$$('.infinite-scroll-item');
+     // Recoge los elementos de la página actual
 
+     await page.waitForSelector('li.infinite-scroll-item', { visible: true });
 
+     const arrayArt = await page.$$('li.infinite-scroll-item');
+
+     // recorre los elementos y estrae las propiedades
 
      for (const workOfArt of arrayArt) {
 
 
-          // Obtener todos los autores como un array
-
-          let artists = [];
+          let autor = '';
           try {
-               artists = await workOfArt.$$eval('.artist-name-shop', artist => artist.map(el => el.textContent.trim())
-               );
+               autor = await workOfArt.$eval('span.artist-name-shop', el => el.textContent.trim());
           } catch (error) {
-               console.log('No se encontraron autores');
+               console.log('no hay autor');
           }
 
-          // Obtener el nombre de la obra
-          let title = '';
+          let name = '';
           try {
-               title = await workOfArt.$eval('h2', el => el.textContent.trim());
+               name = await workOfArt.$eval('h2.woocommerce-loop-product__title', el => el.textContent.trim());
           } catch (error) {
-               console.log('No se encontró el nombre de la obra');
+               console.log('no hay nombre de la obra');
           }
 
-          // Obtener la URL de la imagen
+          // las imagenes las estraemos de este modo ya que con ($eval) directamente me arroja resultados de src con una URL en blanco o placeholder
+
           let image = '';
-          try {
-               image = await workOfArt.$eval('img', el => el.getAttribute('data-srcset'));
 
-          } catch (error) {
+           try {
+               // verifica si existe el atributo 'data-src'
+               const dataSrc = await workOfArt.$eval('img', el => el.hasAttribute('data-src'));
 
-               console.log('No se pudo obtener la imagen');
+               if (dataSrc) {
+
+                    // si existe, obtener el valor
+                    image = await workOfArt.$eval('img', el => el.getAttribute('data-src'));
+                    console.log(`data-src --> ${image}`);
+               } else {
+                    // si no existe, usa el 'srcset' para obtener la URL
+                    const srcset = await workOfArt.$eval('img', el => el.getAttribute('srcset'));
+                    if (srcset) {
+                         // limpia y elige la ultima URL del 'srcset' como la más grande
+                         const urls = srcset.split(',').map(item => item.trim().split(' ')[0]);
+                         image = urls[urls.length - 1];
+
+                         console.log(`srcset --> ${image}`);
+                    } else {
+                         // si tampoco hay 'srcset', usa el 'src'
+                         image = await workOfArt.$eval('img', el => el.getAttribute('src'));
+                         console.log(`src --> ${image}`);
+                    }
+                    
+               }
+           } catch (error) {
+                
+               console.log('no hay imagen:', error);
           }
 
-          // Obtener el precio de la obra
+          // se trata el precio para dejar un valor numerico valido
           let price = '';
           try {
-               price = await workOfArt.$eval('bdi', el => el.textContent);
+               price = await workOfArt.$eval('span.price', el => el.textContent);
+               price = parseFloat(price.replace(/\./g, '').replace(',', '.').replace(/[^\d.-]/g, ''));
 
-               // Limpiar el valor del precio
-               price = parseFloat(
-                    price
-                         .replace(/\./g, '') // Eliminar puntos (separadores de miles)
-                         .replace(',', '.') // Reemplazar coma (separador decimal) por un punto
-                         .replace(/[^\d.-]/g, '')); // Eliminar símbolos no numéricos (como €)
           } catch (error) {
-
-               price = 'Consultar precio';
+               console.log('no hay precio');
           }
 
-          let workOfArtItem = {
-
-               artists, // Array de obras de arte
-               title,
+          // se crea un objeto con los valores de cada elemento
+          const workOfArtItem = {
+               autor,
+               name,
                image,
-               price,
+               price
           };
-
           array.push(workOfArtItem);
 
      }
 
+     // comprueba si el botón con el numero de la siguiente pagina existe y hace click (acerlo sobre el boton de next no funciona como se espera y realiza falsas cargas de pagina)
 
      try {
 
-          await page.waitForSelector('[aria-label="Go to next page"]', { visible: true });
-          const nextPageButton = await page.$('[aria-label="Go to next page"]');
+          const isNextButtonPage = await page.$(`[data-page="${numberPage + 1}"]`);
+          await isNextButtonPage.click();
 
-          await nextPageButton.click();
+          //(waitForNavigation) no funciona en esta web ya que se hace una carga dinamica del contenido
 
-          console.log('pasamos a la siguiente pagina');
+          console.log(`Pasamos a la página ${numberPage + 1} con ${array.length} elementos`);
 
-          createItem(page, workOfArtsArray, browser);
+          numberPage++;
+          // procesa la siguiente página
+          await createItems(page, array, browser);
+
 
      } catch (error) {
 
-          console.log('No hay mas paginas');
-          // Cierra el navegador
+          console.log('No hay más páginas');
+          await dateWrite(array);
           await browser.close();
-          dateWrite(workOfArtsArray);
 
      }
 
-     console.log(array.length);
+}
 
-
-};
-
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 const dateWrite = (array) => {
 
-     fs.writeFile('workOfArts.json', JSON.stringify(array), () => {
-
-          console.log('archivo escrito');
-     })
+     fs.writeFile('data.json', JSON.stringify(array, null, 2), () => {
+          console.log(`Archivo escrito de ${numberPage} paginas con ${array.length} elementos`);
+     });
 }
 
-scrapper('https://www.tallerdelprado.com/tienda/?v=04c19fa1e772');
+scrapper('https://www.tallerdelprado.com/tienda/?v=12470fe406d4');
+
+
+
+
 
 
 
