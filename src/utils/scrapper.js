@@ -90,7 +90,7 @@ const createItems = async (page, array, browser) => {
           }
 
           // se trata el precio para dejar un valor numerico valido
-          let price = '';
+          let price = null;
           try {
                price = await workOfArt.$eval('span.price', el => el.textContent);
                price = parseFloat(price.replace(/\./g, '').replace(',', '.').replace(/[^\d.-]/g, ''));
@@ -138,7 +138,7 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 const dateWrite = (array) => {
 
-     fs.writeFile('data.json', JSON.stringify(array, null, 2), () => {
+     fs.writeFile('products.json', JSON.stringify(array, null, 2), () => {
           console.log(`Archivo escrito de ${numberPage} paginas con ${array.length} elementos`);
      });
 }
